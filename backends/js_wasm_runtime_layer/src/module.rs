@@ -110,6 +110,19 @@ fn table_type_from(ty: &wasmparser::TableType) -> TableType {
     )
 }
 
+/// Convert a [`wasmparser::MemoryType`] to a [`MemoryType`].
+fn memory_type_from(ty: &wasmparser::MemoryType) -> MemoryType {
+    MemoryType::new(
+        ty.initial.try_into().expect("memory size"),
+        ty.maximum.map(|v| v.try_into().expect("memory size")),
+    )
+}
+
+/// Convert a [`wasmparser::GlobalType`] to a [`GlobalType`].
+fn global_type_from(ty: &wasmparser::GlobalType) -> GlobalType {
+    GlobalType::new(value_type_from(&ty.content_type), ty.mutable)
+}
+
 #[derive(Debug)]
 /// A parsed core module with imports and exports
 pub(crate) struct ParsedModule {
@@ -180,20 +193,13 @@ pub(crate) fn parse_module(bytes: &[u8]) -> anyhow::Result<ParsedModule> {
                 for memory in section {
                     let memory = memory?;
 
-                    memories.push(MemoryType::new(
-                        memory.initial.try_into().expect("memory size"),
-                        memory.maximum.map(|v| v.try_into().expect("memory size")),
-                    ))
+                    memories.push(memory_type_from(&memory));
                 }
             }
             wasmparser::Payload::GlobalSection(section) => {
                 for global in section {
                     let global = global?;
-
-                    let ty = value_type_from(&global.ty.content_type);
-                    let mutable = global.ty.mutable;
-
-                    globals.push(GlobalType::new(ty, mutable));
+                    globals.push(global_type_from(&global.ty));
                 }
             }
             wasmparser::Payload::TagSection(_section) =>
@@ -219,8 +225,14 @@ pub(crate) fn parse_module(bytes: &[u8]) -> anyhow::Result<ParsedModule> {
                             tables.push(table_type_from(&ty));
                             ExternType::Table(table_type_from(&ty))
                         }
-                        wasmparser::TypeRef::Memory(_) => todo!(),
-                        wasmparser::TypeRef::Global(_) => todo!(),
+                        wasmparser::TypeRef::Memory(ty) => {
+                            memories.push(memory_type_from(&ty));
+                            ExternType::Memory(memory_type_from(&ty))
+                        }
+                        wasmparser::TypeRef::Global(ty) => {
+                            globals.push(global_type_from(&ty));
+                            ExternType::Global(global_type_from(&ty))
+                        }
                         wasmparser::TypeRef::Tag(_) => todo!(),
                     };
 
